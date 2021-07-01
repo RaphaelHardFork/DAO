@@ -1,5 +1,6 @@
 require('@nomiclabs/hardhat-waffle')
 require('@nomiclabs/hardhat-solhint')
+require('hardhat-erc1820')
 require('hardhat-docgen')
 require('dotenv').config()
 

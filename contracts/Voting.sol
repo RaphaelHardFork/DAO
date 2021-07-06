@@ -100,15 +100,15 @@ contract Voting is IERC777Recipient {
         return proposalId;
     }
 
-    function vote(uint256 propositionId, Vote vote_) public returns (bool) {
-        require(_proposals[propositionId].status == Status.Running, "Voting: the proposal is not running.");
-        require(_hasVote[msg.sender][propositionId] == false, "Voting: you already voted for this proposal.");
+    function vote(uint256 proposalId, Vote vote_) public returns (bool) {
+        require(_proposals[proposalId].status == Status.Running, "Voting: the proposal is not running.");
+        require(_hasVote[msg.sender][proposalId] == false, "Voting: you already voted for this proposal.");
 
-        if (block.timestamp > _proposals[propositionId].createdAt + TIME_LIMIT) {
-            if (_proposals[propositionId].nbYes > _proposals[propositionId].nbNo) {
-                _proposals[propositionId].status = Status.Approved;
+        if (block.timestamp > _proposals[proposalId].createdAt + TIME_LIMIT) {
+            if (_proposals[proposalId].nbYes > _proposals[proposalId].nbNo) {
+                _proposals[proposalId].status = Status.Approved;
 
-                Proposal memory proposal = _proposals[propositionId];
+                Proposal memory proposal = _proposals[proposalId];
                 bytes memory callData;
                 if (bytes(proposal.signature).length == 0) {
                     callData = proposal.inputData;
@@ -118,22 +118,24 @@ contract Voting is IERC777Recipient {
                 (bool success, bytes memory data) = (proposal.target).call(callData);
                 require(success, "Voting: Transaction execution reverted");
             } else {
-                _proposals[propositionId].status = Status.Rejected;
+                _proposals[proposalId].status = Status.Rejected;
             }
         } else {
             if (vote_ == Vote.Yes) {
-                _proposals[propositionId].nbYes += _votesBalances[msg.sender];
+                _proposals[proposalId].nbYes += _votesBalances[msg.sender];
             } else {
-                _proposals[propositionId].nbNo += _votesBalances[msg.sender];
+                _proposals[proposalId].nbNo += _votesBalances[msg.sender];
             }
-            _hasVote[msg.sender][propositionId] = true;
+            _hasVote[msg.sender][proposalId] = true;
         }
 
-        // emit Event
+        emit HasVoted(msg.sender, vote_, proposalId);
         return true;
     }
 
-    // last proposal (id)
+    function lastProposalId() public view returns (uint256) {
+        return _id.current();
+    }
 
     function proposalById(uint256 id) public view returns (Proposal memory) {
         return _proposals[id];

@@ -173,6 +173,7 @@ So far we only implement contracts we need to set up this DAO, now let's focus o
 
 We set up a `mapping` to save the voting power of each address. This voting power is used to prevent a **sybil attack** where a malicious agent create thousand of address to influence the vote direction.
 
+**Make a proposal:**  
 For the function `propose` we need another `mapping` to save the Proposal `struct`:
 
 ```js
@@ -205,9 +206,10 @@ For the function `propose` we need another `mapping` to save the Proposal `struc
     }
 ```
 
-And finally we have the `vote` function:
+**Vote for a proposition:**  
+We define a new `mapping` to save if an address has already vote for a proposal. We also define an `event` to get information about the vote of one address.
 
-```c
+```js
     uint256 public constant TIME_LIMIT = 3 days;
     mapping(address => mapping(uint256 => bool)) private _hasVote;
 
@@ -217,36 +219,90 @@ And finally we have the `vote` function:
 
     {...}
 
-    function vote(uint256 id, Vote vote_) public {
-        require(_hasVote[msg.sender][id] == false, "DAO: Already voted");
-        require(_proposals[id].status == Status.Running, "DAO: Not a running proposal");
+    function vote(uint256 proposalId, Vote vote_) public returns (bool) {
+        require(_proposals[proposalId].status == Status.Running, "Voting: the proposal is not running.");
+        require(_hasVote[msg.sender][proposalId] == false, "Voting: you already voted for this proposal.");
 
-        if (block.timestamp > _proposals[id].createdAt + TIME_LIMIT) {
-            if (_proposals[id].nbYes > _proposals[id].nbNo) {
-                _proposals[id].status = Status.Approved;
-                Proposal memory proposal = _proposals[id];
+        // is the proposal is over? (Running status)
+        if (block.timestamp > _proposals[proposalId].createdAt + TIME_LIMIT) {
+
+            // YES => vote deliberation
+            if (_proposals[proposalId].nbYes > _proposals[proposalId].nbNo) {
+                _proposals[proposalId].status = Status.Approved;
+
+                Proposal memory proposal = _proposals[proposalId];
                 bytes memory callData;
-
-                //Check ce if
                 if (bytes(proposal.signature).length == 0) {
-                    callData = proposal.callData;
+                    callData = proposal.inputData;
                 } else {
-                    callData = abi.encodePacked(bytes4(keccak256(bytes(proposal.signature))), proposal.callData);
+                    callData = abi.encodePacked(bytes4(keccak256(bytes(proposal.signature))), proposal.inputData);
                 }
+
+                // low level call (see below)
                 (bool success, bytes memory data) = (proposal.target).call(callData);
-                require(success, "DAO: Transaction execution reverted.");
+                require(success, "Voting: Transaction execution reverted");
             } else {
-                _proposals[id].status = Status.Rejected;
+                _proposals[proposalId].status = Status.Rejected;
             }
         } else {
+
+            // NO => count the vote
             if (vote_ == Vote.Yes) {
-                _proposals[id].nbYes += _votesBalances[msg.sender];
+                _proposals[proposalId].nbYes += _votesBalances[msg.sender];
             } else {
-                _proposals[id].nbNo += _votesBalances[msg.sender];
+                _proposals[proposalId].nbNo += _votesBalances[msg.sender];
             }
-            _hasVote[msg.sender][id] = true;
+            _hasVote[msg.sender][proposalId] = true;
         }
+
+        emit HasVoted(msg.sender, vote_, proposalId);
+        return true;
     }
+```
+
+Unfortunately if an address attempt to vote while the proposal will end, this latter have to pay the gas fees to close the proposal **(Running status => Approved / Rejected).**
+
+**Low Level Call:**  
+As say before the `struct` contain three essential keys to make an low level call:
+
+- **target:**
+
+The target correspond to the contract address we want to interact with.
+
+- **signature:**
+
+The signature correspond to the function writen in a `string` with parameters type specified, let's see an exemple:
+`"function(address,address,uint256,bytes)"`
+
+For the setColor function in Color.sol:
+`"setColor(uint256,uint256,uint256)"`
+
+This `string` is converted to a `bytes` then hashed to a `bytes32` with a `keccak256()` and finally we take the first four bytes of this hash:  
+`0x5463ae34` as a `bytes4`
+
+- **inputData:**
+
+This is data we have to input as parameters of the function we want to call. Like the signature, the input data is data converted to `bytes`:  
+For that we use an ethersJS function:
+
+```js
+// for the function setColor()
+ethers.utils.solidityPack(["uint256", "uint256", "uint256"], [234, 45, 65]);
+```
+
+This function convert these two array into a `bytes`
+
+**calldata:**  
+inputData and signature compose the **calldata** to realise a low level call:
+
+```js
+bytes memory calldata = abi.encodePacked(signature, calldata);
+```
+
+Then we can call the function:
+
+```js
+(bool success, bytes memory data) = (target).call(calldata)
 ```
 
 TODO:

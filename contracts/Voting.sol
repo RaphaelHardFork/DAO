@@ -19,6 +19,7 @@ contract Voting is IERC777Recipient {
         No
     }
     enum Status {
+        Inactive,
         Running,
         Approved,
         Rejected
@@ -31,21 +32,23 @@ contract Voting is IERC777Recipient {
         uint256 nbYes;
         uint256 nbNo;
         uint256 createdAt;
-        bytes callData; //  ethers.utlis.solidityPack(["type","type",...],[value,value,...]) => bytes
+        bytes inputData; //  ethers.utlis.solidityPack(["type","type",...],[value,value,...]) => bytes
         string proposition;
     }
+    Counters.Counter private _id;
 
     IERC1820Registry private _erc1820 = IERC1820Registry(0x1820a4B7618BdE71Dce8cdc73aAB6C95905faD24);
     bytes32 public constant TOKENS_RECIPIENT_INTERFACE_HASH = keccak256("ERC777TokensRecipient");
 
-    uint256 public constant TIME_LIMIT = 3 days;
-    uint256 public constant MIN_BALANCE_PROPOSE = 1000 * 10**18;
     IERC777 private _token;
-    Counters.Counter private _id;
-
     mapping(uint256 => Proposal) private _proposals;
     mapping(address => mapping(uint256 => bool)) private _hasVote;
     mapping(address => uint256) private _votesBalances;
+
+    uint256 public constant TIME_LIMIT = 3 days;
+    uint256 public constant MIN_BALANCE_PROPOSE = 1000 * 10**18;
+
+    event HasVoted(address indexed voter, Vote vote_, uint256 proposalId);
 
     constructor(uint256 totalSupply_) {
         _erc1820.setInterfaceImplementer(address(this), TOKENS_RECIPIENT_INTERFACE_HASH, address(this));
@@ -82,19 +85,19 @@ contract Voting is IERC777Recipient {
     ) public returns (uint256) {
         require(_votesBalances[msg.sender] >= MIN_BALANCE_PROPOSE, "Voting: not enouth token to propose something.");
         _id.increment();
-        uint256 propositionId = _id.current();
-        _proposals[propositionId] = Proposal({
+        uint256 proposalId = _id.current();
+        _proposals[proposalId] = Proposal({
             status: Status.Running,
             proposer: msg.sender,
             target: target_,
             signature: signature_,
-            callData: callData_,
+            inputData: callData_,
             createdAt: block.timestamp,
             nbYes: 0,
             nbNo: 0,
             proposition: proposition_
         });
-        return propositionId;
+        return proposalId;
     }
 
     function vote(uint256 propositionId, Vote vote_) public returns (bool) {
@@ -108,9 +111,9 @@ contract Voting is IERC777Recipient {
                 Proposal memory proposal = _proposals[propositionId];
                 bytes memory callData;
                 if (bytes(proposal.signature).length == 0) {
-                    callData = proposal.callData;
+                    callData = proposal.inputData;
                 } else {
-                    callData = abi.encodePacked(bytes4(keccak256(bytes(proposal.signature))), proposal.callData);
+                    callData = abi.encodePacked(bytes4(keccak256(bytes(proposal.signature))), proposal.inputData);
                 }
                 (bool success, bytes memory data) = (proposal.target).call(callData);
                 require(success, "Voting: Transaction execution reverted");

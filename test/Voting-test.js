@@ -117,4 +117,11 @@ describe('Voting', function () {
         .withArgs(voter1.address, DEPOSIT)
     })
   })
+
+  describe('Vote for a proposition and see the resolution', function () {
+    beforeEach(async function () {
+      // make a real proposition for color.sol
+      // take the signature, input data, ...
+    })
+  })
 })

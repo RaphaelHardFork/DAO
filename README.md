@@ -157,17 +157,22 @@ So far we only implement contracts we need to set up this DAO, now let's focus o
 ```c
     mapping(address => uint256) private _votesBalances;
 
+    event TokenStaked(address indexed owner, uint256 amount);
+    event TokenUnstaked(address indexed owner, uint256 amount);
+
     {...}
 
     function deposit(uint256 amount) public {
         _votesBalances[msg.sender] += amount;
-        _gouverno.operatorSend(msg.sender, address(this), amount, "", "");
+        _token.operatorSend(msg.sender, address(this), amount, "", "");
+        emit TokenStaked(msg.sender, amount);
     }
 
     function withdraw(uint256 amount) public {
-        require(_votesBalances[msg.sender] >= amount, "DAO: amount exceed balance");
+        require(_votesBalances[msg.sender] >= amount, "Voting: amount exeed balance");
         _votesBalances[msg.sender] -= amount;
-        _gouverno.send(msg.sender, amount, "");
+        _token.send(msg.sender, amount, "");
+        emit TokenUnstaked(msg.sender, amount);
     }
 ```
 
@@ -179,6 +184,8 @@ For the function `propose` we need another `mapping` to save the Proposal `struc
 ```js
     uint256 public constant MIN_BALANCE_PROPOSE = 1000 * 10**18;
     mapping(uint256 => Proposal) private _proposals;
+
+    event ProposalCreated(address indexed proposer, uint256 proposalId);
 
     {...}
 
@@ -202,6 +209,7 @@ For the function `propose` we need another `mapping` to save the Proposal `struc
             nbNo: 0,
             proposition: proposition_
         });
+        emit ProposalCreated(msg.sender, proposalId);
         return proposalId;
     }
 ```
@@ -216,6 +224,7 @@ We define a new `mapping` to save if an address has already vote for a proposal.
     {...}
 
     event HasVoted(address indexed voter, Vote vote_, uint256 proposalId);
+    event ProposalClosed(uint256 indexed proposalId, Status status);
 
     {...}
 
@@ -223,10 +232,7 @@ We define a new `mapping` to save if an address has already vote for a proposal.
         require(_proposals[proposalId].status == Status.Running, "Voting: the proposal is not running.");
         require(_hasVote[msg.sender][proposalId] == false, "Voting: you already voted for this proposal.");
 
-        // is the proposal is over? (Running status)
         if (block.timestamp > _proposals[proposalId].createdAt + TIME_LIMIT) {
-
-            // YES => vote deliberation
             if (_proposals[proposalId].nbYes > _proposals[proposalId].nbNo) {
                 _proposals[proposalId].status = Status.Approved;
 
@@ -237,25 +243,21 @@ We define a new `mapping` to save if an address has already vote for a proposal.
                 } else {
                     callData = abi.encodePacked(bytes4(keccak256(bytes(proposal.signature))), proposal.inputData);
                 }
-
-                // low level call (see below)
                 (bool success, bytes memory data) = (proposal.target).call(callData);
                 require(success, "Voting: Transaction execution reverted");
             } else {
                 _proposals[proposalId].status = Status.Rejected;
             }
+            emit ProposalClosed(proposalId, _proposals[proposalId].status);
         } else {
-
-            // NO => count the vote
             if (vote_ == Vote.Yes) {
                 _proposals[proposalId].nbYes += _votesBalances[msg.sender];
             } else {
                 _proposals[proposalId].nbNo += _votesBalances[msg.sender];
             }
             _hasVote[msg.sender][proposalId] = true;
+            emit HasVoted(msg.sender, vote_, proposalId);
         }
-
-        emit HasVoted(msg.sender, vote_, proposalId);
         return true;
     }
 ```
@@ -304,8 +306,6 @@ Then we can call the function:
 ```js
 (bool success, bytes memory data) = (target).call(calldata)
 ```
-
-**Added in the last version:** Some event has been added => [see in the code](https://github.com/RaphaelHardFork/DAO/blob/main/contracts/Voting.sol#L48)
 
 ### **The executed contract**
 
@@ -365,8 +365,5 @@ So we will display a ranking of the most popular Proposal (with biggest number o
 
 TODO:
 
-- use token in the voting process (nb token X nbYes/No) (done)
-- governance via low level call for Color
+- testing the vote and his resolution (on color.sol)
 - front for these contracts => governance for the background color
-- registry erc 1820
-- ERC777 explaination

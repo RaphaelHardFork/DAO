@@ -45,7 +45,11 @@ contract Voting is IERC777Recipient {
     uint256 public constant TIME_LIMIT = 3 days;
     uint256 public constant MIN_BALANCE_PROPOSE = 1000 * 10**18;
 
+    event TokenStaked(address indexed owner, uint256 amount);
+    event TokenUnstaked(address indexed owner, uint256 amount);
+    event ProposalCreated(address indexed proposer, uint256 proposalId);
     event HasVoted(address indexed voter, Vote vote_, uint256 proposalId);
+    event ProposalClosed(uint256 indexed proposalId, Status status);
 
     constructor(uint256 totalSupply_) {
         _erc1820.setInterfaceImplementer(address(this), TOKENS_RECIPIENT_INTERFACE_HASH, address(this));
@@ -66,12 +70,14 @@ contract Voting is IERC777Recipient {
     function deposit(uint256 amount) public {
         _votesBalances[msg.sender] += amount;
         _token.operatorSend(msg.sender, address(this), amount, "", "");
+        emit TokenStaked(msg.sender, amount);
     }
 
     function withdraw(uint256 amount) public {
         require(_votesBalances[msg.sender] >= amount, "Voting: amount exeed balance");
         _votesBalances[msg.sender] -= amount;
         _token.send(msg.sender, amount, "");
+        emit TokenUnstaked(msg.sender, amount);
     }
 
     function propose(
@@ -94,6 +100,7 @@ contract Voting is IERC777Recipient {
             nbNo: 0,
             proposition: proposition_
         });
+        emit ProposalCreated(msg.sender, proposalId);
         return proposalId;
     }
 
@@ -117,6 +124,7 @@ contract Voting is IERC777Recipient {
             } else {
                 _proposals[proposalId].status = Status.Rejected;
             }
+            emit ProposalClosed(proposalId, _proposals[proposalId].status);
         } else {
             if (vote_ == Vote.Yes) {
                 _proposals[proposalId].nbYes += _votesBalances[msg.sender];
@@ -124,9 +132,8 @@ contract Voting is IERC777Recipient {
                 _proposals[proposalId].nbNo += _votesBalances[msg.sender];
             }
             _hasVote[msg.sender][proposalId] = true;
+            emit HasVoted(msg.sender, vote_, proposalId);
         }
-
-        emit HasVoted(msg.sender, vote_, proposalId);
         return true;
     }
 

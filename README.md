@@ -305,7 +305,7 @@ Then we can call the function:
 (bool success, bytes memory data) = (target).call(calldata)
 ```
 
----
+**Added in the last version:** Some event has been added => [see in the code](https://github.com/RaphaelHardFork/DAO/blob/main/contracts/Voting.sol#L48)
 
 ### **The executed contract**
 

@@ -5,6 +5,11 @@ const { ethers } = require('hardhat')
 
 const CONTRACT_NAME = 'Voting'
 const SUPPLY = ethers.utils.parseEther('100000')
+const DEPOSIT = ethers.utils.parseEther('1000')
+const INPUT_DATA = ethers.utils.solidityPack(
+  ['uint8', 'uint8', 'uint8'],
+  [23, 45, 67]
+)
 
 describe('Voting', function () {
   let Voting, voting, Color, color, Token, token, dev, voter1, voter2, voter3
@@ -22,11 +27,15 @@ describe('Voting', function () {
     const tokenAddress = await voting.governanceTokenAddress()
     Token = await ethers.getContractFactory('GovernanceToken')
     token = await Token.attach(tokenAddress)
+
+    await token.transfer(voter1.address, SUPPLY.div(10))
+    await token.transfer(voter2.address, SUPPLY.div(10))
+    await token.transfer(voter3.address, SUPPLY.div(10))
   })
 
   describe('Deployment', function () {
     it('should mint the supply to the owner [ERC777]', async function () {
-      expect(await token.balanceOf(dev.address)).to.equal(SUPPLY)
+      expect(await token.balanceOf(dev.address)).to.equal(SUPPLY.div(10).mul(7))
     })
 
     it('should set the default operator to Voting.sol [ERC777]', async function () {
@@ -42,24 +51,15 @@ describe('Voting', function () {
   })
 
   describe('Stake some token to make a proposition', function () {
-    const DEPOSIT = ethers.utils.parseEther('1000')
-    const INPUT_DATA = ethers.utils.solidityPack(
-      ['uint8', 'uint8', 'uint8'],
-      [23, 45, 67]
-    )
     beforeEach(async function () {
-      await token.transfer(voter1.address, SUPPLY.div(10))
-      await token.transfer(voter2.address, SUPPLY.div(10))
-      await token.transfer(voter3.address, SUPPLY.div(10))
+      await voting.connect(voter1).deposit(DEPOSIT)
     })
 
     it('should allow user to stake token in the contract', async function () {
-      await voting.connect(voter1).deposit(DEPOSIT)
       expect(await voting.votesBalanceOf(voter1.address)).to.equal(DEPOSIT)
     })
 
     it('should allow user to withdraw their stake', async function () {
-      await voting.connect(voter1).deposit(DEPOSIT)
       expect(await voting.votesBalanceOf(voter1.address), 'deposited').to.equal(
         DEPOSIT
       )
@@ -76,8 +76,6 @@ describe('Voting', function () {
     })
 
     it('should allow user to make a proposition', async function () {
-      await voting.connect(voter1).deposit(DEPOSIT)
-
       // get the timestamp for the call of propose()
       let proposeCall = await voting
         .connect(voter1)
@@ -119,9 +117,62 @@ describe('Voting', function () {
   })
 
   describe('Vote for a proposition and see the resolution', function () {
+    let voteCall
+    let proposalState
     beforeEach(async function () {
+      await voting.connect(voter1).deposit(DEPOSIT)
+      await voting
+        .connect(voter1)
+        .propose(
+          color.address,
+          'setColor(uint8,uint8,uint8)',
+          INPUT_DATA,
+          'set the color #234623'
+        )
+      voteCall = await voting.connect(voter1).vote(1, 0)
+      await voting.connect(voter2).vote(1, 1)
+      proposalState = await voting.proposalById(1)
       // make a real proposition for color.sol
       // take the signature, input data, ...
+    })
+
+    it('should increment the vote count', async function () {
+      expect(proposalState.nbYes.toString(), 'nbYes').to.equal(
+        '1000000000000000000000'
+      )
+      expect(proposalState.nbNo.toString(), 'nbNo').to.equal('0')
+    })
+
+    it('should emit a HasVoted event', async function () {
+      expect(voteCall)
+        .to.emit(voting, 'HasVoted')
+        .withArgs(voter1.address, 0, 1)
+      expect(voting.connect(voter3).vote(1, 1))
+        .to.emit(voting, 'HasVoted')
+        .withArgs(voter3.address, 1, 1)
+    })
+
+    it('should revert if the proposal is not running', async function () {
+      await expect(voting.connect(voter1).vote(2, 1)).to.be.revertedWith(
+        'Voting: the proposal is not running.'
+      )
+    })
+
+    it('should revert if the voter has voted', async function () {
+      await expect(voting.connect(voter1).vote(1, 0)).to.be.revertedWith(
+        'Voting: you already voted for this proposal.'
+      )
+    })
+
+    it('should run the function', async function () {
+      await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
+      await ethers.provider.send('evm_mine')
+      proposalState = await voting.proposalById(1)
+      expect(proposalState.status, 'still running').to.equal(1)
+      voteCall = await voting.connect(voter3).vote(1, 1)
+      proposalState = await voting.proposalById(1)
+      expect(proposalState.status, 'approved').to.equal(2)
+      expect(await color.seeRed(), 'color red').to.equal(23) // REVERTED :(
     })
   })
 })

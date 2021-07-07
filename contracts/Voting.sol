@@ -8,9 +8,6 @@ import "@openzeppelin/contracts/token/ERC777/IERC777Recipient.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC1820Registry.sol";
 import "./GovernanceToken.sol";
 
-// contracts: https://github.com/OpenZeppelin/openzeppelin-contracts/tree/master/contracts
-// docs: https://docs.openzeppelin.com/contracts/4.x/
-
 contract Voting is IERC777Recipient {
     using Counters for Counters.Counter;
 

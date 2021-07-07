@@ -1,3 +1,4 @@
+/* eslint-disable comma-dangle */
 /* eslint-disable no-unused-vars */
 const { expect } = require('chai')
 const { ethers } = require('hardhat')
@@ -23,7 +24,19 @@ describe('GovernanceToken', function () {
     await governanceToken.deployed()
   })
 
-  it('should set the name', async function () {
-    expect(await governanceToken.name()).to.equal('GovernanceToken')
+  it('should set the name & symbol', async function () {
+    expect(await governanceToken.name(), 'name').to.equal('GovernanceToken')
+    expect(await governanceToken.symbol(), 'symbol').to.equal('GVT')
+  })
+
+  it('should mint the supply to the owner', async function () {
+    expect(await governanceToken.balanceOf(dev.address)).to.equal(SUPPLY)
+  })
+
+  it('should set the default operator', async function () {
+    const operatorsTab = await governanceToken.defaultOperators()
+    for (const elem of operatorsTab) {
+      expect(elem, `${elem}`).to.equal(dev.address)
+    }
   })
 })

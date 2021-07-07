@@ -305,6 +305,64 @@ Then we can call the function:
 (bool success, bytes memory data) = (target).call(calldata)
 ```
 
+---
+
+### **The executed contract**
+
+We want to execute a contract through the **hand made DAO contract** above. So we write a new contract:
+
+```c
+//SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract Color is Ownable {
+    uint256 private _red;
+    uint256 private _green;
+    uint256 private _blue;
+
+    constructor(address owner_) Ownable() {
+        transferOwnership(owner_);
+    }
+
+    function setColor(
+        uint256 red_,
+        uint256 green_,
+        uint256 blue_
+    ) public onlyOwner {
+        _red = red_;
+        _green = green_;
+        _blue = blue_;
+    }
+
+    function seeRed() public view returns (uint256) {
+        return _red;
+    }
+
+    function seeGreen() public view returns (uint256) {
+        return _green;
+    }
+
+    function seeBlue() public view returns (uint256) {
+        return _blue;
+    }
+}
+```
+
+In this contract we will set the DAO contract to the _owner_. This way only the DAO contract can use the `setColor()` function. By changing the color of the contract the background color of the [Dapp associated]() will change.
+
+### **The vote organisation**
+
+We will display all the Proposals on the Dapp, this way each address can vote **YES** or **NO** for one Proposal.  
+So we will display a ranking of the most popular Proposal (with biggest number of votes).  
+**Let's see how it's work through tests of these three Smart Contract.**
+
+### **Testing hand made DAO contracts**
+
+---
+
 TODO:
 
 - use token in the voting process (nb token X nbYes/No) (done)
